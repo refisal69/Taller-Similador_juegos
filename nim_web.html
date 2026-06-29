@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Simulador Nim - Minimax y Poda Alfa-Beta</title>
+<!-- Mermaid CDN -->
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+  :root{
+    --bg:#F7F6F2; --card:#FFFFFF; --text:#2C2C2A; --muted:#5F5E5A;
+    --border:#D3D1C7; --accent:#534AB7; --accent-light:#EEEDFE;
+    --win-max:#3B6D11; --win-max-bg:#EAF3DE;
+    --win-min:#A32D2D; --win-min-bg:#FCEBEB;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#1C1B19; --card:#2A2926; --text:#EDEBE4; --muted:#B4B2A9;
+      --border:#444441; --accent:#AFA9EC; --accent-light:#3C3489;
+      --win-max:#97C459; --win-max-bg:#27500A;
+      --win-min:#F09595; --win-min-bg:#501313;
+    }
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg); color:var(--text); line-height:1.6; padding:24px 16px 60px;
+  }
+  .wrap{max-width:1200px; margin:0 auto;}
+  h1{font-size:22px; font-weight:600; margin-bottom:4px;}
+  .sub{color:var(--muted); margin-top:0; margin-bottom:24px; font-size:14px;}
+  .card{
+    background:var(--card); border:1px solid var(--border); border-radius:12px;
+    padding:20px; margin-bottom:20px;
+  }
+  .card h2{font-size:16px; margin:0 0 12px;}
+  label{font-size:13px; color:var(--muted); display:block; margin-bottom:4px;}
+  input[type=text]{
+    width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border);
+    background:var(--bg); color:var(--text); font-size:14px;
+  }
+  .row{display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;}
+  .row > div{flex:1; min-width:140px;}
+  button{
+    background:var(--accent); color:#fff; border:none; border-radius:8px;
+    padding:9px 16px; font-size:14px; cursor:pointer; font-weight:500;
+  }
+  button.secondary{background:var(--accent-light); color:var(--accent);}
+  button:disabled{opacity:.4; cursor:not-allowed;}
+  .piles{display:flex; flex-direction:column; gap:10px; margin:16px 0;}
+  .pile-row{display:flex; align-items:center; gap:10px; flex-wrap:wrap;}
+  .pile-label{width:60px; font-weight:600; font-size:14px;}
+  .tokens{display:flex; gap:4px; flex-wrap:wrap;}
+  .token{
+    width:18px; height:18px; border-radius:4px; background:var(--accent);
+  }
+  .moves{display:flex; gap:6px; flex-wrap:wrap;}
+  .moves button{padding:6px 10px; font-size:12px;}
+  .status{font-size:14px; margin:10px 0;}
+  .badge{
+    display:inline-block; padding:3px 10px; border-radius:20px; font-size:12px; font-weight:600;
+  }
+  .badge.max{color:var(--win-max); background:var(--win-max-bg);}
+  .badge.min{color:var(--win-min); background:var(--win-min-bg);}
+  .log{
+    font-size:13px; color:var(--muted); max-height:160px; overflow-y:auto;
+    border-top:1px solid var(--border); padding-top:10px; margin-top:10px;
+  }
+  .log div{padding:2px 0;}
+  .stats{
+    display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; font-size:13px;
+  }
+  .stat{background:var(--bg); border-radius:8px; padding:10px;}
+  .stat b{display:block; font-size:18px; color:var(--accent);}
+  #treeContainer{
+    margin-top:16px; background:var(--bg); border-radius:8px; padding:10px;
+    overflow:auto; max-height:600px; border:1px solid var(--border);
+  }
+  #treeContainer .mermaid{
+    display:flex; justify-content:center;
+  }
+  footer{text-align:center; color:var(--muted); font-size:12px; margin-top:30px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Simulador de Nim</h1>
+  <p class="sub">Minimax y poda Alfa-Beta &mdash; Taller de IA: estrategias inteligentes para juegos</p>
+
+  <div class="card">
+    <h2>Configurar estado inicial</h2>
+    <div class="row">
+      <div>
+        <label>Filas y fichas (separadas por coma)</label>
+        <input type="text" id="initState" value="1,3">
+      </div>
+      <div style="flex:0;">
+        <button onclick="newGame()">Reiniciar partida</button>
+      </div>
+      <div style="flex:0;">
+        <button class="secondary" onclick="analizar()">Analizar (Minimax vs Alfa-Beta)</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Tablero</h2>
+    <div class="status" id="status"></div>
+    <div class="piles" id="piles"></div>
+    <div class="log" id="log"></div>
+  </div>
+
+  <div class="card" id="analysisCard" style="display:none;">
+    <h2>Resultado del análisis</h2>
+    <div class="stats" id="stats"></div>
+    <div id="treeContainer">
+      <pre class="mermaid" id="mermaidCode" style="text-align:center;"></pre>
+    </div>
+  </div>
+
+  <footer>Reglas: cada turno se quita 1 o más fichas de una sola fila. Gana quien toma la última ficha.</footer>
+</div>
+
+<script>
+// ---------- Lógica del juego ----------
+function generarMovimientos(estado){
+  const movs = [];
+  estado.forEach((fichas, i) => {
+    for(let q = 1; q <= fichas; q++) movs.push([i, q]);
+  });
+  return movs;
+}
+function aplicarMovimiento(estado, mov){
+  const nuevo = estado.slice();
+  nuevo[mov[0]] -= mov[1];
+  return nuevo;
+}
+function esTerminal(estado){ return estado.every(f => f === 0); }
+function describirMov(mov){
+  const fila = String.fromCharCode(65 + mov[0]);
+  return `quitar ${mov[1]} ficha(s) de la fila ${fila}`;
+}
+
+// ---------- Algoritmos Minimax y Alfa-Beta con conteo de nodos ----------
+let contadorNodos = 0;
+
+function minimax(estado, turnoMax){
+  contadorNodos++;
+  if(esTerminal(estado)) return turnoMax ? -1 : 1;
+  const movs = generarMovimientos(estado);
+  let valores = movs.map(m => minimax(aplicarMovimiento(estado, m), !turnoMax));
+  return turnoMax ? Math.max(...valores) : Math.min(...valores);
+}
+
+function alphabeta(estado, turnoMax, alfa = -Infinity, beta = Infinity, podas = null, nodoId = null){
+  // podas es un array que guarda info de podas (opcional)
+  contadorNodos++;
+  if(esTerminal(estado)) return turnoMax ? -1 : 1;
+  const movs = generarMovimientos(estado);
+  if(turnoMax){
+    let valor = -Infinity;
+    for(const m of movs){
+      const childId = `${nodoId}_${movs.indexOf(m)}`;
+      const val = alphabeta(aplicarMovimiento(estado, m), false, alfa, beta, podas, childId);
+      valor = Math.max(valor, val);
+      alfa = Math.max(alfa, valor);
+      if(alfa >= beta) {
+        // poda: se registra la rama no explorada
+        if(podas) podas.push({nodo: nodoId, hijo: childId, alfa, beta});
+        break;
+      }
+    }
+    return valor;
+  } else {
+    let valor = Infinity;
+    for(const m of movs){
+      const childId = `${nodoId}_${movs.indexOf(m)}`;
+      const val = alphabeta(aplicarMovimiento(estado, m), true, alfa, beta, podas, childId);
+      valor = Math.min(valor, val);
+      beta = Math.min(beta, valor);
+      if(beta <= alfa) {
+        if(podas) podas.push({nodo: nodoId, hijo: childId, alfa, beta});
+        break;
+      }
+    }
+    return valor;
+  }
+}
+
+function mejorMovimiento(estado, turnoMax){
+  const movs = generarMovimientos(estado);
+  let mejorVal = turnoMax ? -Infinity : Infinity;
+  let elegido = null;
+  for(const m of movs){
+    const val = alphabeta(aplicarMovimiento(estado, m), !turnoMax);
+    if(turnoMax && val > mejorVal){ mejorVal = val; elegido = m; }
+    else if(!turnoMax && val < mejorVal){ mejorVal = val; elegido = m; }
+  }
+  return [elegido, mejorVal];
+}
+
+// ---------- Generación del árbol para Mermaid ----------
+function generarEstructuraArbol(estado, turnoMax, podas, padreId = 'root', prof = 0){
+  const id = padreId;
+  const esTerm = esTerminal(estado);
+  const valor = esTerm ? (turnoMax ? -1 : 1) : null; // se calcula después
+  const nodo = {
+    id,
+    estado: estado.slice(),
+    turno: turnoMax ? 'MAX' : 'MIN',
+    valor: valor,
+    hijos: [],
+    podado: false
+  };
+  if(esTerm) return nodo;
+
+  const movs = generarMovimientos(estado);
+  movs.forEach((m, idx) => {
+    const childId = `${id}_${idx}`;
+    // Verificar si esta rama fue podada (por Alfa-Beta)
+    const podado = podas ? podas.some(p => p.nodo === id && p.hijo === childId) : false;
+    const hijo = generarEstructuraArbol(aplicarMovimiento(estado, m), !turnoMax, podas, childId, prof+1);
+    hijo.podado = podado;
+    nodo.hijos.push(hijo);
+  });
+  // Calcular valor minimax real (sin poda) para mostrar
+  if(!esTerm){
+    if(turnoMax){
+      nodo.valor = Math.max(...nodo.hijos.map(h => h.valor));
+    } else {
+      nodo.valor = Math.min(...nodo.hijos.map(h => h.valor));
+    }
+  }
+  return nodo;
+}
+
+function construirGrafoMermaid(arbol){
+  let lines = ['graph TD'];
+  const nodos = new Map();
+  const edges = [];
+
+  function recorrer(nodo, padreId){
+    const label = `${nodo.estado.join(',')}\\n${nodo.turno} (${nodo.valor})`;
+    const style = nodo.turno === 'MAX' ? 'fill:#d4edda,stroke:#28a745' : 'fill:#f8d7da,stroke:#dc3545';
+    const extra = nodo.podado ? ',stroke-dasharray:5 5' : '';
+    lines.push(`  ${nodo.id}["${label}"]:::${nodo.turno} ${nodo.podado ? ':::podado' : ''}`);
+    if(padreId){
+      const edge = `  ${padreId} --> ${nodo.id}`;
+      edges.push(edge);
+      if(nodo.podado){
+        edges.push(`  ${padreId} -.-> ${nodo.id}:::podado`);
+      }
+    }
+    nodo.hijos.forEach(h => recorrer(h, nodo.id));
+  }
+
+  lines.push('  classDef MAX fill:#d4edda,stroke:#28a745');
+  lines.push('  classDef MIN fill:#f8d7da,stroke:#dc3545');
+  lines.push('  classDef podado stroke-dasharray:5 5,opacity:0.6');
+  recorrer(arbol, null);
+  // eliminar duplicados de edges (si hay)
+  const uniqueEdges = [...new Set(edges)];
+  uniqueEdges.forEach(e => lines.push(e));
+  return lines.join('\n');
+}
+
+// ---------- Estado de la interfaz ----------
+let estado = [1,3];
+let turnoMax = true;
+let historial = [];
+
+function parseInicial(){
+  const txt = document.getElementById('initState').value;
+  return txt.split(',').map(x => parseInt(x.trim(),10)).filter(n => !isNaN(n) && n >= 0);
+}
+
+function newGame(){
+  estado = parseInicial();
+  if(estado.length === 0) estado = [1,3];
+  turnoMax = true;
+  historial = [`Estado inicial: [${estado.join(', ')}] - turno de MAX`];
+  document.getElementById('analysisCard').style.display = 'none';
+  render();
+}
+
+function render(){
+  const pilesEl = document.getElementById('piles');
+  pilesEl.innerHTML = '';
+
+  estado.forEach((fichas, i) => {
+    const row = document.createElement('div');
+    row.className = 'pile-row';
+
+    const label = document.createElement('div');
+    label.className = 'pile-label';
+    label.textContent = 'Fila ' + String.fromCharCode(65+i) + ':';
+    row.appendChild(label);
+
+    const tokens = document.createElement('div');
+    tokens.className = 'tokens';
+    for(let t=0; t<fichas; t++){
+      const tk = document.createElement('div');
+      tk.className = 'token';
+      tokens.appendChild(tk);
+    }
+    row.appendChild(tokens);
+
+    if(turnoMax && !esTerminal(estado) && fichas > 0){
+      const movesDiv = document.createElement('div');
+      movesDiv.className = 'moves';
+      for(let q=1; q<=fichas; q++){
+        const btn = document.createElement('button');
+        btn.textContent = '-' + q;
+        btn.onclick = () => jugarHumano([i,q]);
+        movesDiv.appendChild(btn);
+      }
+      row.appendChild(movesDiv);
+    }
+    pilesEl.appendChild(row);
+  });
+
+  const statusEl = document.getElementById('status');
+  if(esTerminal(estado)){
+    const ganador = turnoMax ? 'MIN' : 'MAX';
+    statusEl.innerHTML = `Juego terminado. <span class="badge ${ganador==='MAX'?'max':'min'}">Gana ${ganador}</span>`;
+  } else {
+    statusEl.innerHTML = `Turno actual: <span class="badge ${turnoMax?'max':'min'}">${turnoMax?'MAX (tu turno)':'MIN (IA pensando...)'}</span>`;
+  }
+
+  const logEl = document.getElementById('log');
+  logEl.innerHTML = historial.map(h => `<div>${h}</div>`).join('');
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+function jugarHumano(mov){
+  estado = aplicarMovimiento(estado, mov);
+  historial.push(`MAX: ${describirMov(mov)} → [${estado.join(', ')}]`);
+  turnoMax = false;
+  render();
+  if(!esTerminal(estado)){
+    setTimeout(turnoIA, 350);
+  } else {
+    render();
+  }
+}
+
+function turnoIA(){
+  const [mov, _] = mejorMovimiento(estado, false);
+  estado = aplicarMovimiento(estado, mov);
+  historial.push(`MIN (IA): ${describirMov(mov)} → [${estado.join(', ')}]`);
+  turnoMax = true;
+  render();
+}
+
+// ---------- Análisis con árbol visual ----------
+function analizar(){
+  const inicial = parseInicial();
+  if(inicial.length === 0) return;
+
+  // Ejecutar Minimax puro
+  contadorNodos = 0;
+  const valorMM = minimax(inicial, true);
+  const nodosMM = contadorNodos;
+
+  // Ejecutar Alfa-Beta y registrar podas
+  contadorNodos = 0;
+  const podas = [];
+  const valorAB = alphabeta(inicial, true, -Infinity, Infinity, podas, 'root');
+  const nodosAB = contadorNodos;
+
+  // Mejor jugada
+  const [mov, val] = mejorMovimiento(inicial, true);
+  const reduccion = nodosMM ? (100 * (1 - nodosAB / nodosMM)).toFixed(1) : '0.0';
+
+  // Generar árbol (incluyendo información de podas)
+  const arbol = generarEstructuraArbol(inicial, true, podas);
+  const grafoMermaid = construirGrafoMermaid(arbol);
+
+  // Mostrar estadísticas
+  document.getElementById('stats').innerHTML = `
+    <div class="stat"><b>${valorMM === 1 ? '+1 (gana MAX)' : '-1 (gana MIN)'}</b>Valor minimax</div>
+    <div class="stat"><b>${describirMov(mov)}</b>Mejor jugada para MAX</div>
+    <div class="stat"><b>${nodosMM}</b>Nodos (Minimax puro)</div>
+    <div class="stat"><b>${nodosAB}</b>Nodos (con Alfa-Beta)</div>
+    <div class="stat"><b>${nodosMM - nodosAB}</b>Nodos podados</div>
+    <div class="stat"><b>${reduccion}%</b>Reducción</div>
+  `;
+
+  // Mostrar árbol con Mermaid
+  const mermaidEl = document.getElementById('mermaidCode');
+  mermaidEl.textContent = grafoMermaid;
+  mermaidEl.removeAttribute('data-processed');
+  mermaid.init(undefined, mermaidEl);
+
+  document.getElementById('analysisCard').style.display = 'block';
+}
+
+// Inicialización
+newGame();
+</script>
+</body>
+</html>

@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Simulador CSP - Asignación de tareas</title>
+<style>
+  :root{
+    --bg:#F7F6F2; --card:#FFFFFF; --text:#2C2C2A; --muted:#5F5E5A;
+    --border:#D3D1C7; --accent:#534AB7; --accent-light:#EEEDFE;
+    --ok:#3B6D11; --ok-bg:#EAF3DE;
+    --bad:#A32D2D; --bad-bg:#FCEBEB;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#1C1B19; --card:#2A2926; --text:#EDEBE4; --muted:#B4B2A9;
+      --border:#444441; --accent:#AFA9EC; --accent-light:#3C3489;
+      --ok:#97C459; --ok-bg:#27500A;
+      --bad:#F09595; --bad-bg:#501313;
+    }
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg); color:var(--text); line-height:1.6; padding:24px 16px 60px;
+  }
+  .wrap{max-width:760px; margin:0 auto;}
+  h1{font-size:22px; font-weight:600; margin-bottom:4px;}
+  .sub{color:var(--muted); margin-top:0; margin-bottom:24px; font-size:14px;}
+  .card{
+    background:var(--card); border:1px solid var(--border); border-radius:12px;
+    padding:20px; margin-bottom:20px;
+  }
+  .card h2{font-size:16px; margin:0 0 12px;}
+  label{font-size:13px; color:var(--muted); display:block; margin-bottom:4px;}
+  input[type=text]{
+    width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border);
+    background:var(--bg); color:var(--text); font-size:14px;
+  }
+  .row{display:flex; gap:12px; flex-wrap:wrap; margin-bottom:14px;}
+  .row > div{flex:1; min-width:140px;}
+  button{
+    background:var(--accent); color:#fff; border:none; border-radius:8px;
+    padding:9px 16px; font-size:14px; cursor:pointer; font-weight:500;
+  }
+  button.secondary{background:var(--accent-light); color:var(--accent);}
+  .presets{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:6px;}
+  .presets button{font-size:12px; padding:6px 10px;}
+  .trace{
+    font-family:ui-monospace,Menlo,Consolas,monospace; font-size:13px;
+    background:var(--bg); border:1px solid var(--border); border-radius:8px;
+    padding:12px; max-height:320px; overflow-y:auto; white-space:pre-wrap;
+  }
+  .trace div{padding:2px 0;}
+  .trace .sol{color:var(--ok); font-weight:600;}
+  .trace .dead{color:var(--bad);}
+  .summary{margin-top:14px; font-size:14px;}
+  .badge{
+    display:inline-block; padding:3px 10px; border-radius:20px; font-size:12px; font-weight:600;
+  }
+  .badge.ok{color:var(--ok); background:var(--ok-bg);}
+  .badge.bad{color:var(--bad); background:var(--bad-bg);}
+  .sol-list{margin-top:10px; display:flex; flex-direction:column; gap:6px;}
+  .sol-card{
+    background:var(--ok-bg); color:var(--ok); border-radius:8px; padding:8px 12px;
+    font-size:13px; font-weight:500;
+  }
+  footer{text-align:center; color:var(--muted); font-size:12px; margin-top:30px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Simulador CSP &mdash; Asignación de tareas</h1>
+  <p class="sub">Backtracking con propagación de restricciones &mdash; Taller de IA</p>
+
+  <div class="card">
+    <h2>Configurar el problema</h2>
+    <div class="presets">
+      <button class="secondary" onclick="cargarPreset('original')">Problema original</button>
+      <button class="secondary" onclick="cargarPreset('variante')">Variante: Carlos no T3</button>
+      <button class="secondary" onclick="cargarPreset('sinsolucion')">Ejemplo sin solución</button>
+    </div>
+    <div class="row">
+      <div>
+        <label>Dominio de Ana</label>
+        <input type="text" id="domAna" value="T1,T2">
+      </div>
+      <div>
+        <label>Dominio de Luis</label>
+        <input type="text" id="domLuis" value="T1,T3">
+      </div>
+      <div>
+        <label>Dominio de Carlos</label>
+        <input type="text" id="domCarlos" value="T2,T3">
+      </div>
+    </div>
+    <button onclick="resolver()">Resolver con backtracking</button>
+  </div>
+
+  <div class="card">
+    <h2>Traza de búsqueda (árbol de propagación)</h2>
+    <div class="trace" id="trace">Configura el problema y presiona "Resolver".</div>
+    <div class="summary" id="summary"></div>
+    <div class="sol-list" id="solList"></div>
+  </div>
+
+  <footer>Variables: Ana, Luis, Carlos &nbsp;|&nbsp; Restricción: todas las tareas asignadas deben ser distintas.</footer>
+</div>
+
+<script>
+const VARIABLES = ['Ana','Luis','Carlos'];
+
+function parseDominio(id){
+  return document.getElementById(id).value
+    .split(',').map(s => s.trim()).filter(s => s.length > 0);
+}
+
+function cargarPreset(nombre){
+  if(nombre === 'original'){
+    document.getElementById('domAna').value = 'T1,T2';
+    document.getElementById('domLuis').value = 'T1,T3';
+    document.getElementById('domCarlos').value = 'T2,T3';
+  } else if(nombre === 'variante'){
+    document.getElementById('domAna').value = 'T1,T2';
+    document.getElementById('domLuis').value = 'T1,T3';
+    document.getElementById('domCarlos').value = 'T2';
+  } else if(nombre === 'sinsolucion'){
+    document.getElementById('domAna').value = 'T1';
+    document.getElementById('domLuis').value = 'T1';
+    document.getElementById('domCarlos').value = 'T2,T3';
+  }
+}
+
+let trazaLineas = [];
+
+function backtracking(asignacion, dominios, nivel, soluciones){
+  const sangria = '  '.repeat(nivel);
+
+  if(Object.keys(asignacion).length === VARIABLES.length){
+    trazaLineas.push({tipo:'sol', texto: `${sangria}SOLUCIÓN: ${JSON.stringify(asignacion)}`});
+    soluciones.push(Object.assign({}, asignacion));
+    return;
+  }
+
+  const persona = VARIABLES[Object.keys(asignacion).length];
+  trazaLineas.push({tipo:'normal', texto: `${sangria}Asignar '${persona}' (dominio: [${dominios[persona].join(', ')}])`});
+
+  for(const tarea of dominios[persona]){
+    trazaLineas.push({tipo:'normal', texto: `${sangria}  → probar ${persona} = ${tarea}`});
+    asignacion[persona] = tarea;
+
+    const nuevosDominios = {};
+    for(const p of VARIABLES) nuevosDominios[p] = dominios[p].slice();
+    let vacio = false, culpable = null;
+    for(const otra of VARIABLES){
+      if(!(otra in asignacion) && nuevosDominios[otra].includes(tarea)){
+        nuevosDominios[otra] = nuevosDominios[otra].filter(t => t !== tarea);
+        if(nuevosDominios[otra].length === 0){ vacio = true; culpable = otra; }
+      }
+    }
+
+    if(vacio){
+      trazaLineas.push({tipo:'dead', texto: `${sangria}     dominio vacío para '${culpable}' → retroceder`});
+    } else {
+      backtracking(asignacion, nuevosDominios, nivel + 1, soluciones);
+    }
+    delete asignacion[persona];
+  }
+}
+
+function resolver(){
+  const dominios = {
+    Ana: parseDominio('domAna'),
+    Luis: parseDominio('domLuis'),
+    Carlos: parseDominio('domCarlos'),
+  };
+
+  trazaLineas = [];
+  const soluciones = [];
+  backtracking({}, dominios, 0, soluciones);
+
+  const traceEl = document.getElementById('trace');
+  traceEl.innerHTML = trazaLineas.map(l =>
+    `<div class="${l.tipo === 'sol' ? 'sol' : l.tipo === 'dead' ? 'dead' : ''}">${l.texto}</div>`
+  ).join('');
+
+  const summaryEl = document.getElementById('summary');
+  if(soluciones.length > 0){
+    summaryEl.innerHTML = `<span class="badge ok">${soluciones.length} solución(es) encontrada(s)</span>`;
+  } else {
+    summaryEl.innerHTML = `<span class="badge bad">Sin solución</span>`;
+  }
+
+  const solListEl = document.getElementById('solList');
+  solListEl.innerHTML = soluciones.map((s,i) =>
+    `<div class="sol-card">Solución ${i+1}: Ana=${s.Ana}, Luis=${s.Luis}, Carlos=${s.Carlos}</div>`
+  ).join('');
+}
+
+resolver();
+</script>
+</body>
+</html>
